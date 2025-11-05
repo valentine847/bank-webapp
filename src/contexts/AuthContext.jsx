@@ -218,10 +218,6 @@ export const AuthProvider = ({ children }) => {
       throw new Error(err.message || "Transfer failed. Please try again.");
     }
   };
-/* ===========================================
-        FETCH TRANSCATIONS COST
-
-        // ======================================= */
 /* =====================================================
    🔹 FETCH TRANSACTION COST
 ===================================================== */

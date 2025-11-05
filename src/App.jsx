@@ -1,5 +1,7 @@
 import React from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
+import { ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 // === Pages ===
 import Home from "./pages/Home.jsx";
@@ -129,7 +131,10 @@ export default function App() {
               </ProtectedRoute>
             }
           />
-
+      <>
+      {/* your routes/components */}
+      <ToastContainer position="top-center" autoClose={2500} />
+    </>
           {/* ===== CATCH-ALL (404) ===== */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
