@@ -70,7 +70,7 @@ const Register = () => {
         throw new Error(errorData.message || "Registration failed.");
       }
 
-      const data = await response.json();
+       await response.json();
 
       setSuccess("Registration successful! Redirecting to login...");
       setTimeout(() => navigate("/login"), 2000);
