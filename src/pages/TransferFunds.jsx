@@ -1,102 +1,141 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
+import ConfirmationModal from "../components/confirmationModal";
+import Notification from "../components/Notification";
 
 export default function TransferFunds() {
-  const { fetchBankAccounts, transferFunds } = useAuth();
+  const { fetchBankAccounts, transferFunds, getCharges } = useAuth();
+
   const [accounts, setAccounts] = useState([]);
   const [fromAccount, setFromAccount] = useState("");
   const [toAccount, setToAccount] = useState("");
   const [amount, setAmount] = useState("");
+  const [transactionCost, setTransactionCost] = useState(0);
+  const [showModal, setShowModal] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  const [notification, setNotification] = useState({ message: "", type: "success" });
 
   const navigate = useNavigate();
-  const location = useLocation();
-  const preFromAccount = location.state?.fromAccount || "";
 
+  // Load accounts
   useEffect(() => {
     const loadAccounts = async () => {
       try {
-        const data = await fetchBankAccounts();
-        setAccounts(data);
-        if (preFromAccount) setFromAccount(preFromAccount);
+        const accs = await fetchBankAccounts();
+        const formatted = accs.map(a => ({
+          accountNumber: a.accountNumber,
+          accountType: a.accountType,
+          balance: a.balance ?? 0,
+        }));
+        setAccounts(formatted);
+
+        if (formatted.length > 0) setFromAccount(formatted[0].accountNumber);
+        if (formatted.length > 1) setToAccount(formatted[1].accountNumber);
       } catch (err) {
-        setError("Failed to load accounts.");
-        console.error(err);
+        console.error("Failed to load accounts:", err);
+        setNotification({ message: "Failed to load accounts", type: "error" });
       }
     };
     loadAccounts();
-  }, [fetchBankAccounts, preFromAccount]);
+  }, [fetchBankAccounts]);
 
-  const handleTransfer = async (e) => {
-    e.preventDefault();
-    if (!fromAccount || !toAccount || !amount) {
-      setError("Please fill in all fields.");
-      return;
+  // Update transaction cost whenever amount changes
+  useEffect(() => {
+    const previewCharges = async () => {
+      if (!amount) {
+        setTransactionCost(0);
+        return;
+      }
+      try {
+        const cost = await getCharges(Number(amount), "transfer");
+        setTransactionCost(cost);
+      } catch {
+        setTransactionCost(0);
+      }
+    };
+    previewCharges();
+  }, [amount, getCharges]);
+
+  const handleTransfer = async () => {
+    if (!fromAccount || !toAccount || !amount || Number(amount) <= 0) {
+      return setNotification({ message: "Select accounts and enter a valid amount.", type: "error" });
+    }
+    if (fromAccount === toAccount) {
+      return setNotification({ message: "Cannot transfer to the same account.", type: "error" });
     }
 
     setLoading(true);
-    setError("");
-    setSuccess("");
-
     try {
-      await transferFunds(fromAccount, toAccount, parseFloat(amount));
-      setSuccess(`✅ Successfully transferred $${amount} from ${fromAccount} to ${toAccount}`);
+      await transferFunds(fromAccount, toAccount, Number(amount));
+      setNotification({ message: `🔁 Transfer of $${amount} successful!`, type: "success" });
       setAmount("");
-      setToAccount("");
 
-      // ✅ Redirect back to Dashboard after success
-      navigate("/dashboard");
+      const updatedAccounts = await fetchBankAccounts();
+      setAccounts(updatedAccounts);
+
+      // Auto navigate back to dashboard after 1.5s
+      setTimeout(() => navigate("/dashboard"), 1500);
     } catch (err) {
-      setError(err.message || "Transfer failed.");
+      console.error("Transfer error:", err);
+      setNotification({ message: err.message || "Transfer failed", type: "error" });
     } finally {
       setLoading(false);
     }
   };
 
+  const confirmTransfer = (e) => {
+    e.preventDefault();
+    setShowModal(true);
+  };
+
+  const handleConfirm = () => {
+    setShowModal(false);
+    handleTransfer();
+  };
+
+  const handleCancel = () => {
+    setShowModal(false);
+    setNotification({ message: "Transfer cancelled.", type: "error" });
+  };
+
   return (
-    <div className="max-w-lg mx-auto mt-10 p-6 bg-white shadow-md rounded-lg">
-      <h2 className="text-2xl font-bold mb-6 text-gray-800">Transfer Funds</h2>
+    <div className="max-w-md mx-auto mt-10 p-6 bg-white shadow-md rounded-lg">
+      <h2 className="text-2xl font-bold mb-6 text-gray-800">🔁 Transfer Funds</h2>
 
-      {error && <p className="text-red-600 mb-4">{error}</p>}
-      {success && <p className="text-green-600 mb-4">{success}</p>}
-
-      <form onSubmit={handleTransfer} className="space-y-4">
-        {/* From Account */}
+      <form onSubmit={confirmTransfer} className="space-y-4">
         <div>
           <label className="block text-gray-700 font-medium mb-1">From Account</label>
-          <input
-            list="userAccounts"
+          <select
             value={fromAccount}
             onChange={(e) => setFromAccount(e.target.value)}
-            placeholder="Select or type your account number"
             className="w-full border border-gray-300 rounded px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <datalist id="userAccounts">
-            {accounts.map((acc) => (
+          >
+            {accounts.map(acc => (
               <option key={acc.accountNumber} value={acc.accountNumber}>
-                {acc.accountNumber} - {acc.accountType} — Balance: ${acc.balance?.toFixed(2)}
+                {acc.accountType} — {acc.accountNumber} — Balance: ${acc.balance.toFixed(2)}
               </option>
             ))}
-          </datalist>
-          <p className="text-sm text-gray-500 mt-1">You can type or select from your accounts.</p>
+          </select>
         </div>
 
-        {/* To Account */}
         <div>
           <label className="block text-gray-700 font-medium mb-1">To Account</label>
-          <input
-            type="text"
+          <select
             value={toAccount}
             onChange={(e) => setToAccount(e.target.value)}
-            placeholder="Enter recipient's account number"
             className="w-full border border-gray-300 rounded px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
+          >
+            {accounts
+              .filter(acc => acc.accountNumber !== fromAccount)
+              .map(acc => (
+                <option key={acc.accountNumber} value={acc.accountNumber}>
+                  {acc.accountType} — {acc.accountNumber} — Balance: ${acc.balance.toFixed(2)}
+                </option>
+              ))}
+          </select>
         </div>
 
-        {/* Amount */}
         <div>
           <label className="block text-gray-700 font-medium mb-1">Amount</label>
           <input
@@ -105,21 +144,40 @@ export default function TransferFunds() {
             step="0.01"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
-            placeholder="Enter amount"
+            placeholder="Enter transfer amount"
             className="w-full border border-gray-300 rounded px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
 
+        {transactionCost > 0 && (
+          <p className="text-gray-600">Estimated transaction cost: ${transactionCost}</p>
+        )}
+
         <button
           type="submit"
           disabled={loading}
-          className={`w-full py-2 px-4 rounded bg-blue-600 text-white font-medium hover:bg-blue-700 transition-colors duration-300 ${
+          className={`w-full py-2 px-4 rounded bg-blue-600 text-white font-medium hover:bg-blue-700 ${
             loading ? "opacity-60 cursor-not-allowed" : ""
           }`}
         >
-          {loading ? "Transferring..." : "Transfer Funds"}
+          {loading ? "Processing..." : "Transfer"}
         </button>
       </form>
+
+      <ConfirmationModal
+        isOpen={showModal}
+        onClose={handleCancel}
+        onConfirm={handleConfirm}
+        title="Confirm Transfer"
+        message={`Transfer $${amount} from ${fromAccount} to ${toAccount}?\nTransaction cost: $${transactionCost}`}
+      />
+
+      {/* Notification */}
+      <Notification
+        message={notification.message}
+        type={notification.type}
+        onClose={() => setNotification({ message: "", type: "success" })}
+      />
     </div>
   );
 }

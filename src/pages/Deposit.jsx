@@ -1,72 +1,95 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useNavigate, useLocation } from "react-router-dom";
+import ConfirmationModal from "../components/confirmationModal";
+import Notification from "../components/Notification";
 
 export default function Deposit() {
   const { fetchBankAccounts, deposit } = useAuth();
   const [accounts, setAccounts] = useState([]);
   const [accountNumber, setAccountNumber] = useState("");
   const [amount, setAmount] = useState("");
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [notification, setNotification] = useState({ message: "", type: "success" });
 
   const navigate = useNavigate();
   const location = useLocation();
-
-  // Pre-select account if passed from Dashboard
   const preSelectedAccount = location.state?.accountNumber || "";
 
+  // Load accounts
   useEffect(() => {
     const loadAccounts = async () => {
       try {
         const accs = await fetchBankAccounts();
-        setAccounts(accs);
+        const formatted = accs.map(a => ({
+          accountNumber: a.accountNumber,
+          accountType: a.accountType,
+          balance: a.balance ?? 0,
+        }));
+        setAccounts(formatted);
+
         if (preSelectedAccount) setAccountNumber(preSelectedAccount);
-      } catch {
-        setError("Failed to load accounts");
+        else if (formatted.length > 0) setAccountNumber(formatted[0].accountNumber);
+      } catch (err) {
+        console.error("Failed to load accounts:", err);
+        setNotification({ message: "Failed to load accounts", type: "error" });
       }
     };
     loadAccounts();
   }, [fetchBankAccounts, preSelectedAccount]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError("");
-    setMessage("");
-
-    if (!accountNumber || !amount) {
-      setError("Please select an account and enter an amount.");
+  // Deposit handler
+  const handleDeposit = async () => {
+    if (!accountNumber || !amount || Number(amount) <= 0) {
+      setNotification({ message: "Please select an account and enter a valid amount.", type: "error" });
       return;
     }
 
+    setLoading(true);
     try {
-      setLoading(true);
-      const res = await deposit(accountNumber, parseFloat(amount));
-      setMessage(`✅ ${res.message || "Deposit successful!"}`);
+      const res = await deposit(accountNumber, Number(amount));
 
-      // Refresh accounts
-      const updated = await fetchBankAccounts();
-      setAccounts(updated);
-      setAmount("");
+      if (res?.message || res?.status?.startsWith("200") || res?.data) {
+        setNotification({ message: `💰 Deposit of $${amount} successful!`, type: "success" });
+        setAmount("");
 
-      // ✅ Redirect back to Dashboard after success
-      navigate("/dashboard");
+        const updatedAccounts = await fetchBankAccounts();
+        setAccounts(updatedAccounts);
+
+        // Navigate back to dashboard after 1.5s
+        setTimeout(() => navigate("/dashboard"), 1500);
+      } else {
+        throw new Error(res?.error || "Deposit failed");
+      }
     } catch (err) {
-      setError(err.message || "Deposit failed.");
+      console.error("Deposit error:", err);
+      setNotification({ message: err.message || "Deposit failed", type: "error" });
     } finally {
       setLoading(false);
     }
+  };
+
+  const confirmDeposit = (e) => {
+    e.preventDefault();
+    setShowModal(true);
+  };
+
+  const handleConfirm = () => {
+    setShowModal(false);
+    handleDeposit();
+  };
+
+  const handleCancel = () => {
+    setShowModal(false);
+    setNotification({ message: "Deposit cancelled.", type: "error" });
   };
 
   return (
     <div className="max-w-md mx-auto mt-10 p-6 bg-white shadow-md rounded-lg">
       <h2 className="text-2xl font-bold mb-6 text-gray-800">💰 Deposit Funds</h2>
 
-      {error && <p className="text-red-600 mb-4">{error}</p>}
-      {message && <p className="text-green-600 mb-4">{message}</p>}
-
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={confirmDeposit} className="space-y-4">
         <div>
           <label className="block text-gray-700 font-medium mb-1">Select Account</label>
           <select
@@ -75,7 +98,7 @@ export default function Deposit() {
             className="w-full border border-gray-300 rounded px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="">-- Choose Account --</option>
-            {accounts.map((acc) => (
+            {accounts.map(acc => (
               <option key={acc.accountNumber} value={acc.accountNumber}>
                 {acc.accountType} — {acc.accountNumber} — Balance: ${acc.balance.toFixed(2)}
               </option>
@@ -106,6 +129,21 @@ export default function Deposit() {
           {loading ? "Processing..." : "Deposit"}
         </button>
       </form>
+
+      <ConfirmationModal
+        isOpen={showModal}
+        onClose={handleCancel}
+        onConfirm={handleConfirm}
+        title="Confirm Deposit"
+        message={`Confirm deposit of $${amount} to account ${accountNumber}?`}
+      />
+
+      {/* Notification */}
+      <Notification
+        message={notification.message}
+        type={notification.type}
+        onClose={() => setNotification({ message: "", type: "success" })}
+      />
     </div>
   );
 }

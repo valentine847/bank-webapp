@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useAuth } from "../contexts/AuthContext.jsx";
 
 export default function FetchAccounts() {
@@ -15,36 +15,36 @@ export default function FetchAccounts() {
     3: "Junior Account",
   };
 
+  const loadAccounts = useCallback(async () => {
+    if (!user?.customerId) {
+      setError("⚠️ Please log in to view your accounts.");
+      return;
+    }
+
+    try {
+      const res = await fetchBankAccounts(user.customerId);
+      console.log("📦 Full backend response:", res);
+
+      // ✅ FIX: handle direct array response
+      if (Array.isArray(res)) {
+        setAccounts(res);
+        console.log("✅ Extracted accounts:", res);
+      } else if (res?.data && Array.isArray(res.data)) {
+        setAccounts(res.data);
+      } else if (res?.data?.accounts && Array.isArray(res.data.accounts)) {
+        setAccounts(res.data.accounts);
+      } else {
+        setError("⚠️ No valid account data found.");
+      }
+    } catch (err) {
+      console.error("❌ Error fetching accounts:", err);
+      setError("⚠️ Could not fetch accounts. Check console for details.");
+    }
+  }, [user?.customerId, fetchBankAccounts]);
+
   useEffect(() => {
-    const loadAccounts = async () => {
-      if (!user?.customerId) {
-        setError("⚠️ Please log in to view your accounts.");
-        return;
-      }
-
-      try {
-        const res = await fetchBankAccounts(user.customerId);
-        console.log("📦 Full backend response:", res);
-
-        // ✅ FIX: handle direct array response
-        if (Array.isArray(res)) {
-          setAccounts(res);
-          console.log("✅ Extracted accounts:", res);
-        } else if (res?.data && Array.isArray(res.data)) {
-          setAccounts(res.data);
-        } else if (res?.data?.accounts && Array.isArray(res.data.accounts)) {
-          setAccounts(res.data.accounts);
-        } else {
-          setError("⚠️ No valid account data found.");
-        }
-      } catch (err) {
-        console.error("❌ Error fetching accounts:", err);
-        setError("⚠️ Could not fetch accounts. Check console for details.");
-      }
-    };
-
     loadAccounts();
-  }, [user]);
+  }, [loadAccounts]);
 
   const formatAccountType = (typeValue) => {
     if (!typeValue) return "Unknown Type";

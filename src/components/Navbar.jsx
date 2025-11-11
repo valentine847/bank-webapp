@@ -70,6 +70,11 @@ export default function Navbar() {
               <Link to="/transaction-statement" className="nav-link">
                 Transactions
               </Link>
+
+              {/* Update Password Link */}
+              <Link to="/update-password" className="nav-link">
+                Update Password 🔒
+              </Link>
             </div>
 
             <span className="nav-divider" />

@@ -1,4 +1,3 @@
-// src/contexts/AuthContext.jsx
 import React, { createContext, useContext, useState } from "react";
 
 const AuthContext = createContext();
@@ -13,259 +12,220 @@ export const AuthProvider = ({ children }) => {
     }
   });
 
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [token, setToken] = useState(() => localStorage.getItem("token") || null);
 
-  /* =====================================================
-     🔹 Helper: Get Auth Header
-  ===================================================== */
-  const getAuthHeader = () => {
-    const token = user?.token || localStorage.getItem("token");
-    return token ? { Authorization: `Bearer ${token}` } : {};
-  };
+  const getAuthHeader = () => ({
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+  });
 
-  /* =====================================================
-     🔹 LOGIN FUNCTION
-  ===================================================== */
+  // LOGIN
   const login = async (usernameOrEmail, password) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(`${BASE_URL}/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ usernameOrEmail, password }),
-      });
+    const res = await fetch(`${BASE_URL}/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ usernameOrEmail, password }),
+    });
+    if (!res.ok) throw new Error("Invalid Login Credentials");
 
-      if (!res.ok) throw new Error("Login failed. Check credentials.");
+    const data = await res.json();
+    const userData = data.data;
+    const token = userData.token;
 
-      const data = await res.json();
-      const userData = data.data || data;
+    setUser(userData);
+    setToken(token);
 
-      localStorage.setItem("user", JSON.stringify(userData));
-      localStorage.setItem("token", userData.token);
-      localStorage.setItem("customerId", userData.customerId);
+    localStorage.setItem("user", JSON.stringify(userData));
+    localStorage.setItem("token", token);
 
-      setUser(userData);
-      return userData;
-    } catch (err) {
-      console.error("🚨 Login error:", err);
-      setError(err.message);
-      throw err;
-    } finally {
-      setLoading(false);
-    }
+    return userData;
   };
 
-  /* =====================================================
-     🔹 LOGOUT FUNCTION
-  ===================================================== */
   const logout = () => {
-    localStorage.removeItem("user");
-    localStorage.removeItem("token");
-    localStorage.removeItem("customerId");
+    localStorage.clear();
     setUser(null);
+    setToken(null);
   };
 
-  /* =====================================================
-     🔹 FETCH ACCOUNT TYPES
-  ===================================================== */
-  const fetchAccountTypes = async () => {
-    try {
-      const res = await fetch(`${BASE_URL}/accountTypes`);
-      if (!res.ok) throw new Error("Failed to load account types.");
-      const data = await res.json();
-      return data.data || data;
-    } catch (err) {
-      console.error("🚨 Error loading account types:", err);
-      throw err;
-    }
-  };
-
-  /* =====================================================
-     🔹 FETCH BANK ACCOUNTS
-  ===================================================== */
+  // FETCH ACCOUNTS
   const fetchBankAccounts = async (customerId) => {
-    try {
-      const id = customerId || user?.customerId || localStorage.getItem("customerId");
-      if (!id) throw new Error("Missing customer ID.");
+    const stored = JSON.parse(localStorage.getItem("user"));
+    customerId = customerId || stored?.customerId;
+    if (!customerId) throw new Error("Customer ID not found");
 
-      const res = await fetch(`${BASE_URL}/customer/${id}/accounts`, {
+    const res = await fetch(`${BASE_URL}/customer/${customerId}/accounts`, {
+      headers: getAuthHeader(),
+    });
+    const data = await res.json();
+    return data.data;
+  };
+
+  const fetchAccountTypes = async () => {
+    const res = await fetch(`${BASE_URL}/fetchAccountTypes`, { headers: getAuthHeader() });
+    const data = await res.json();
+    return data.data;
+  };
+
+  // DEPOSIT
+  const deposit = async (toAccount, amount) => {
+    const res = await fetch(`${BASE_URL}/deposit`, {
+      method: "POST",
+      headers: getAuthHeader(),
+      body: JSON.stringify({ toAccount, amount: Number(amount) }),
+    });
+
+    if (!res.ok) {
+      const error = await res.json().catch(() => null);
+      throw new Error(error?.message || "Deposit failed");
+    }
+
+    return res.json();
+  };
+
+  // WITHDRAW
+  const withdraw = async ({ fromAccount, amount }) => {
+    const res = await fetch(`${BASE_URL}/withdraw`, {
+      method: "POST",
+      headers: getAuthHeader(),
+      body: JSON.stringify({ fromAccount, amount: Number(amount) }),
+    });
+
+    if (!res.ok) {
+      const error = await res.json().catch(() => null);
+      throw new Error(error?.message || "Withdraw failed");
+    }
+
+    return res.json();
+  };
+
+  // GET CHARGES
+  const getCharges = async (amount, type) => {
+    try {
+      const res = await fetch(`${BASE_URL}/charges?amount=${Number(amount)}&type=${type}`, {
         headers: getAuthHeader(),
       });
 
-      const text = await res.text();
-      if (!res.ok) throw new Error(`Failed to fetch accounts.`);
+      if (!res.ok) {
+        const error = await res.json().catch(() => null);
+        throw new Error(error?.message || "Failed to load charges");
+      }
 
-      const data = JSON.parse(text);
-      return data.data || [];
-    } catch (err) {
-      console.error("🚨 Error fetching accounts:", err);
-      throw new Error(err.message || "Failed to fetch accounts.");
+      const data = await res.json();
+      return data?.data?.transactionCost ?? 0;
+    } catch {
+      return 0;
     }
   };
 
-  /* =====================================================
-     🔹 CREATE BANK ACCOUNT
-  ===================================================== */
-  const createBankAccount = async (payload) => {
-    try {
-      const customerId = user?.customerId || localStorage.getItem("customerId");
-      if (!customerId) throw new Error("Missing customer ID — please log in again.");
-
-      const finalPayload = {
-        customerId: String(customerId),
-        accountType: payload.accountType,
-      };
-
-      const res = await fetch(`${BASE_URL}/createAccount`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...getAuthHeader(),
-        },
-        body: JSON.stringify(finalPayload),
-      });
-
-      const text = await res.text();
-      const data = JSON.parse(text);
-
-      if (!res.ok) throw new Error(data?.message || "Failed to create account.");
-
-      return data.data || data;
-    } catch (err) {
-      console.error("🚨 Create Account error:", err);
-      throw new Error(err.message || "Failed to create account.");
-    }
-  };
-
-  /* =====================================================
-     💰 DEPOSIT FUNCTION
-  ===================================================== */
-  const deposit = async (toAccount, amount) => {
-    try {
-      const payload = { toAccount: String(toAccount).trim(), amount: Number(amount) };
-      const res = await fetch(`${BASE_URL}/deposit`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...getAuthHeader() },
-        body: JSON.stringify(payload),
-      });
-
-      const text = await res.text();
-      let data;
-      try { data = JSON.parse(text); } catch { data = null; }
-
-      if (!res.ok) throw new Error(data?.message || "Deposit failed. Please try again.");
-
-      return data;
-    } catch (err) {
-      console.error("🚨 Deposit error:", err);
-      throw new Error(err.message || "Deposit failed. Please try again.");
-    }
-  };
-
-  /* =====================================================
-     💸 WITHDRAW FUNCTION
-  ===================================================== */
-  const withdraw = async (fromAccount, amount) => {
-    try {
-      const payload = { fromAccount: String(fromAccount).trim(), amount: Number(amount) };
-      const res = await fetch(`${BASE_URL}/withdraw`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...getAuthHeader() },
-        body: JSON.stringify(payload),
-      });
-
-      const text = await res.text();
-      let data;
-      try { data = JSON.parse(text); } catch { data = null; }
-
-      if (!res.ok) throw new Error(data?.message || "Withdrawal failed. Please try again.");
-
-      return data;
-    } catch (err) {
-      console.error("🚨 Withdraw error:", err);
-      throw new Error(err.message || "Withdrawal failed. Please try again.");
-    }
-  };
-
-  /* =====================================================
-     🔹 TRANSFER FUNDS
-  ===================================================== */
+  // TRANSFER
   const transferFunds = async (fromAccount, toAccount, amount) => {
-    try {
-      const payload = {
-        fromAccount: String(fromAccount).trim(),
-        toAccount: String(toAccount).trim(),
-        amount: Number(amount),
-      };
-
-      const res = await fetch(`${BASE_URL}/transferFunds`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...getAuthHeader() },
-        body: JSON.stringify(payload),
-      });
-
-      const text = await res.text();
-      let data;
-      try { data = JSON.parse(text); } catch { data = null; }
-
-      if (!res.ok) throw new Error(data?.message || "Transfer failed. Please try again.");
-
-      return data;
-    } catch (err) {
-      console.error("🚨 Transfer error:", err);
-      throw new Error(err.message || "Transfer failed. Please try again.");
-    }
-  };
-/* ===========================================
-        FETCH TRANSCATIONS COST
-
-        // ======================================= */
-/* =====================================================
-   🔹 FETCH TRANSACTION COST
-===================================================== */
-const getTransactionCost = async (type, amount) => {
-  try {
-    const payload = { type, amount: Number(amount) };
-    const res = await fetch(`${BASE_URL}/admin/updateTransactionCosts`, {
+    const res = await fetch(`${BASE_URL}/transferFunds`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...getAuthHeader(),
-      },
+      headers: getAuthHeader(),
+      body: JSON.stringify({ fromAccount, toAccount, amount: Number(amount) }),
+    });
+
+    if (!res.ok) {
+      const error = await res.json().catch(() => null);
+      throw new Error(error?.message || "Transfer failed");
+    }
+
+    return res.json();
+  };
+
+  // STATEMENTS
+  const getAccountStatement = async (accountNumber) => {
+    const res = await fetch(`${BASE_URL}/account/${accountNumber}/statement`, {
+      headers: getAuthHeader(),
+    });
+    const data = await res.json();
+    return data.data;
+  };
+
+  // ----------------------------
+  // PASSWORD RESET (EMAIL OR SMS)
+  // ----------------------------
+
+  const forgotPasswordUnified = async ({ email, phoneNumber }) => {
+    if (!email && !phoneNumber) throw new Error("Provide email or phone number");
+    const payload = email ? { email } : { phoneNumber };
+
+    const res = await fetch(`${BASE_URL}/forgotPassword`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
 
-    const text = await res.text();
-    if (!res.ok) throw new Error(text);
+    if (!res.ok) {
+      const error = await res.json().catch(() => null);
+      throw new Error(error?.message || "Failed to send password reset instructions");
+    }
 
-    const data = JSON.parse(text);
-    return data?.cost || 0; // assuming the API returns { cost: number }
-  } catch (err) {
-    console.error("🚨 Transaction cost error:", err);
-    return 0; // fallback to zero
+    return res.json();
+  };
+
+  const resetPasswordUnified = async ({ email, phoneNumber, token, otp, newPassword }) => {
+    let payload;
+    if (email) payload = { email, token, newPassword };
+    else if (phoneNumber) payload = { phoneNumber, otp, newPassword };
+    else throw new Error("Provide email or phone number");
+
+    const res = await fetch(`${BASE_URL}/resetPassword`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const error = await res.json().catch(() => null);
+      throw new Error(error?.message || "Failed to reset password");
+    }
+
+    return res.json();
+  };
+  
+// ----------------------------
+// UPDATE PASSWORD (LOGGED-IN USER)
+// ----------------------------
+const updatePassword = async ({ usernameOrEmail, oldPassword, newPassword, confirmPassword }) => {
+  if (!usernameOrEmail || !oldPassword || !newPassword || !confirmPassword) {
+    throw new Error("All fields are required");
   }
+
+  const res = await fetch(`${BASE_URL}/updatePassword`, {
+    method: "POST",
+    headers: { 
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}` // optional, if your API needs auth
+    },
+    body: JSON.stringify({ usernameOrEmail, oldPassword, newPassword, confirmPassword }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => null);
+    throw new Error(err?.message || "Failed to update password");
+  }
+
+  return res.json();
 };
 
-  /* =====================================================
-     🔹 PROVIDER VALUE
-  ===================================================== */
+
   return (
     <AuthContext.Provider
       value={{
         user,
-        loading,
-        error,
         login,
         logout,
-        fetchAccountTypes,
         fetchBankAccounts,
-        createBankAccount,
+        fetchAccountTypes,
         deposit,
         withdraw,
         transferFunds,
-        getTransactionCost,
+        getCharges,
+        getAccountStatement,
+        forgotPasswordUnified,
+        resetPasswordUnified,
+        updatePassword,
       }}
     >
       {children}

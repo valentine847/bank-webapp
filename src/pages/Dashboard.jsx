@@ -1,15 +1,21 @@
-// src/pages/Dashboard.jsx
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 
 export default function Dashboard() {
-  const { user, fetchBankAccounts } = useAuth();
+  const { user: authUser, fetchBankAccounts } = useAuth();
+  const [user, setUser] = useState(authUser);
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   const navigate = useNavigate();
+
+  // Update user state if localStorage changes
+  useEffect(() => {
+    const storedUser = JSON.parse(localStorage.getItem("user"));
+    if (storedUser) setUser(storedUser);
+  }, [authUser]);
 
   useEffect(() => {
     const loadAccounts = async () => {
@@ -40,10 +46,11 @@ export default function Dashboard() {
   const handleViewStatement = (accountNumber) => {
     navigate("/transaction-statement", { state: { accountNumber } });
   };
+
   return (
     <div className="max-w-7xl mx-auto p-6">
       <h1 className="text-3xl font-bold mb-6 text-gray-800">
-        Welcome, {user?.name || "User"}!
+        Welcome, {user?.name || user?.username || "User"}! 🌟
       </h1>
 
       {error && <p className="text-red-600 mb-4">{error}</p>}

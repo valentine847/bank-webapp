@@ -13,7 +13,10 @@ import Withdraw from "./pages/Withdraw.jsx";
 import TransferFunds from "./pages/TransferFunds.jsx";
 import Overdraft from "./pages/Overdraft.jsx";
 import CheckBalance from "./pages/CheckBalance.jsx";
-import TransactionStatement from "./pages/TransactionStatement.jsx"; // ✅ Added
+import TransactionStatement from "./pages/TransactionStatement.jsx";
+import ForgotPassword from "./pages/ForgotPassword.jsx";
+import ResetPassword from "./pages/ResetPassword.jsx";
+import UpdatePassword from "./pages/UpdatePassword.jsx";
 
 // === Components ===
 import Navbar from "./components/Navbar.jsx";
@@ -47,6 +50,11 @@ export default function App() {
             path="/register"
             element={!user ? <Register /> : <Navigate to="/dashboard" replace />}
           />
+{/* Forgot and Reset Password should always be accessible */}
+  <Route path="/forgot-password" element={<ForgotPassword />} />
+  <Route path="/reset-password" element={<ResetPassword />} />
+
+         
 
           {/* ===== PROTECTED ROUTES ===== */}
           <Route
@@ -122,13 +130,17 @@ export default function App() {
           />
 
           <Route
-            path="/transaction-statement" // ✅ New route
+            path="/transaction-statement"
             element={
               <ProtectedRoute>
                 <TransactionStatement />
               </ProtectedRoute>
             }
           />
+
+
+          <Route path="/update-password" element={<UpdatePassword />} />
+
 
           {/* ===== CATCH-ALL (404) ===== */}
           <Route path="*" element={<Navigate to="/" replace />} />
