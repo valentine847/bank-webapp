@@ -15,7 +15,7 @@ export default function CreateAccount() {
       setAccountTypes(types);
     };
     loadTypes();
-  }, []);
+  }, [fetchAccountTypes]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
